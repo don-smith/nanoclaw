@@ -72,6 +72,7 @@ import {
 } from '../config.js';
 import { getLastGroupSync, setLastGroupSync, updateChatName } from '../db.js';
 import { logger } from '../logger.js';
+import { isVoiceMessage, transcribeAudioMessage } from '../transcription.js';
 import {
   Channel,
   OnInboundMessage,
@@ -260,7 +261,22 @@ export class WhatsAppChannel implements Channel {
               '';
 
             // Skip protocol messages with no text content (encryption keys, read receipts, etc.)
-            if (!content) continue;
+            // but allow voice messages through for transcription
+            if (!content && !isVoiceMessage(msg)) continue;
+
+            // Transcribe voice messages
+            let finalContent = content;
+            if (isVoiceMessage(msg)) {
+              const transcript = await transcribeAudioMessage(msg, this.sock);
+              finalContent = transcript
+                ? `[Voice: ${transcript}]`
+                : '[Voice Message - transcription unavailable]';
+              logger.info(
+                { jid: chatJid, length: finalContent.length },
+                'Transcribed voice message',
+              );
+            }
+            if (!finalContent) continue;
 
             const sender = msg.key.participant || msg.key.remoteJid || '';
             const senderName = msg.pushName || sender.split('@')[0];
@@ -272,14 +288,14 @@ export class WhatsAppChannel implements Channel {
             // (even in DMs/self-chat) so we check for that.
             const isBotMessage = ASSISTANT_HAS_OWN_NUMBER
               ? fromMe
-              : content.startsWith(`${ASSISTANT_NAME}:`);
+              : finalContent.startsWith(`${ASSISTANT_NAME}:`);
 
             this.opts.onMessage(chatJid, {
               id: msg.key.id || '',
               chat_jid: chatJid,
               sender,
               sender_name: senderName,
-              content,
+              content: finalContent,
               timestamp,
               is_from_me: fromMe,
               is_bot_message: isBotMessage,
