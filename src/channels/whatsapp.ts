@@ -322,9 +322,7 @@ export class WhatsAppChannel implements Channel {
     // Use per-group assistant name if available.
     const groupReg = this.opts.registeredGroups()[jid];
     const botName = groupReg?.assistantName || ASSISTANT_NAME;
-    const prefixed = ASSISTANT_HAS_OWN_NUMBER
-      ? text
-      : `${botName}: ${text}`;
+    const prefixed = ASSISTANT_HAS_OWN_NUMBER ? text : `${botName}: ${text}`;
 
     if (!this.connected) {
       this.outgoingQueue.push({ jid, text: prefixed });
