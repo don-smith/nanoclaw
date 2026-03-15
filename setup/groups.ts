@@ -111,7 +111,9 @@ async function syncGroups(projectRoot: string): Promise<void> {
   let syncOk = false;
   try {
     const syncScript = `
-import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, fetchLatestWaWebVersion } from '@whiskeysockets/baileys';
+import https from 'https';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
@@ -126,6 +128,32 @@ if (!fs.existsSync(authDir)) {
   process.exit(1);
 }
 
+const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.HTTP_PROXY;
+const waProxyAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+
+function fetchVersionViaProxy() {
+  return new Promise((resolve) => {
+    const req = https.request('https://web.whatsapp.com/sw.js', { agent: waProxyAgent }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk.toString(); });
+      res.on('end', () => {
+        const m = data.match(/manifest-([\\d.]+)\\.json/);
+        if (m) resolve(m[1].split('.').map(Number));
+        else resolve(undefined);
+      });
+    });
+    req.on('error', () => resolve(undefined));
+    req.setTimeout(10000, () => { req.destroy(); resolve(undefined); });
+    req.end();
+  });
+}
+
+async function fetchWaVersion() {
+  if (waProxyAgent) return fetchVersionViaProxy();
+  const { version } = await fetchLatestWaWebVersion({}).catch(() => ({ version: undefined }));
+  return version;
+}
+
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.exec('CREATE TABLE IF NOT EXISTS chats (jid TEXT PRIMARY KEY, name TEXT, last_message_time TEXT)');
@@ -135,13 +163,19 @@ const upsert = db.prepare(
 );
 
 const { state, saveCreds } = await useMultiFileAuthState(authDir);
+const version = await fetchWaVersion();
 
 const sock = makeWASocket({
+  version,
   auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
   printQRInTerminal: false,
   logger,
   browser: Browsers.macOS('Chrome'),
+  agent: waProxyAgent,
+  fetchAgent: waProxyAgent,
 });
+
+let synced = false;
 
 const timeout = setTimeout(() => {
   console.error('TIMEOUT');
@@ -162,6 +196,7 @@ sock.ev.on('connection.update', async (update) => {
           count++;
         }
       }
+      synced = true;
       console.log('SYNCED:' + count);
     } catch (err) {
       console.error('FETCH_ERROR:' + err.message);
@@ -173,8 +208,10 @@ sock.ev.on('connection.update', async (update) => {
     }
   } else if (update.connection === 'close') {
     clearTimeout(timeout);
-    console.error('CONNECTION_CLOSED');
-    process.exit(1);
+    if (!synced) {
+      console.error('CONNECTION_CLOSED');
+      process.exit(1);
+    }
   }
 });
 `;

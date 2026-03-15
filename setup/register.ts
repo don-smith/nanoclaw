@@ -107,6 +107,8 @@ export async function run(args: string[]): Promise<void> {
     added_at: new Date().toISOString(),
     requiresTrigger: parsed.requiresTrigger,
     isMain: parsed.isMain,
+    assistantName:
+      parsed.assistantName !== 'Andy' ? parsed.assistantName : undefined,
   });
 
   logger.info('Wrote registration to SQLite');
