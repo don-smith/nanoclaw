@@ -294,16 +294,7 @@ export function validateMount(
   let effectiveReadonly = true; // Default to readonly
 
   if (requestedReadWrite) {
-    if (!isMain && allowlist.nonMainReadOnly) {
-      // Non-main groups forced to read-only
-      effectiveReadonly = true;
-      logger.info(
-        {
-          mount: mount.hostPath,
-        },
-        'Mount forced to read-only for non-main group',
-      );
-    } else if (!allowedRoot.allowReadWrite) {
+    if (!allowedRoot.allowReadWrite) {
       // Root doesn't allow read-write
       effectiveReadonly = true;
       logger.info(
@@ -312,6 +303,16 @@ export function validateMount(
           root: allowedRoot.path,
         },
         'Mount forced to read-only - root does not allow read-write',
+      );
+    } else if (!isMain && allowlist.nonMainReadOnly) {
+      // Non-main groups default to read-only, but explicit allowReadWrite overrides
+      effectiveReadonly = false;
+      logger.info(
+        {
+          mount: mount.hostPath,
+          root: allowedRoot.path,
+        },
+        'Non-main group granted read-write - allowReadWrite explicitly set on root',
       );
     } else {
       // Read-write allowed
