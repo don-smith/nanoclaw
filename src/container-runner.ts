@@ -6,6 +6,7 @@ import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { readEnvFile } from './env.js';
 import {
   CONTAINER_IMAGE,
   CONTAINER_MAX_OUTPUT_SIZE,
@@ -291,6 +292,12 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Forward GitHub token so container agents can use the gh CLI
+  const ghEnv = readEnvFile(['GH_TOKEN']);
+  if (ghEnv.GH_TOKEN) {
+    args.push('-e', `GH_TOKEN=${ghEnv.GH_TOKEN}`);
   }
 
   // Runtime-specific args for host gateway resolution
