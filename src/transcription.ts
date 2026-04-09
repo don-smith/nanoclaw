@@ -81,7 +81,7 @@ export async function transcribeAudioMessage(
     const buffer = (await downloadMediaMessage(
       msg,
       'buffer',
-      { options: { dispatcher: mediaDispatcher as any } },
+      { options: { dispatcher: mediaDispatcher as any } as any },
       {
         logger: console as any,
         reuploadRequest: sock.updateMediaMessage,
