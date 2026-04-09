@@ -23,6 +23,7 @@ vi.mock('../logger.js', () => ({
 // Mock db
 vi.mock('../db.js', () => ({
   getLastGroupSync: vi.fn(() => null),
+  getMessageContentById: vi.fn(() => undefined),
   setLastGroupSync: vi.fn(),
   updateChatName: vi.fn(),
 }));
@@ -44,16 +45,6 @@ vi.mock('fs', async () => {
 vi.mock('child_process', () => ({
   exec: vi.fn(),
 }));
-
-// Clear proxy env vars before module import so waProxyAgent is undefined,
-// forcing the non-proxy code path that uses the mocked fetchLatestWaWebVersion.
-// vi.hoisted runs before imports (hoisted alongside vi.mock).
-vi.hoisted(() => {
-  delete process.env.https_proxy;
-  delete process.env.HTTPS_PROXY;
-  delete process.env.http_proxy;
-  delete process.env.HTTP_PROXY;
-});
 
 // Build a fake WASocket that's an EventEmitter with the methods we need
 function createFakeSocket() {
@@ -84,6 +75,7 @@ let fakeSocket: ReturnType<typeof createFakeSocket>;
 vi.mock('@whiskeysockets/baileys', () => {
   return {
     default: vi.fn(() => fakeSocket),
+    makeWASocket: vi.fn(() => fakeSocket),
     Browsers: { macOS: vi.fn(() => ['macOS', 'Chrome', '']) },
     DisconnectReason: {
       loggedOut: 401,
@@ -543,7 +535,7 @@ describe('WhatsAppChannel', () => {
       );
     });
 
-    it('handles voice note without caption via transcription fallback', async () => {
+    it('handles message with no extractable text (e.g. voice note without caption)', async () => {
       const opts = createTestOpts();
       const channel = new WhatsAppChannel(opts);
 
@@ -565,13 +557,8 @@ describe('WhatsAppChannel', () => {
         },
       ]);
 
-      // Voice messages are processed with transcription (or fallback)
-      expect(opts.onMessage).toHaveBeenCalledWith(
-        'registered@g.us',
-        expect.objectContaining({
-          content: expect.stringContaining('[Voice'),
-        }),
-      );
+      // Skipped — no text content to process
+      expect(opts.onMessage).not.toHaveBeenCalled();
     });
 
     it('uses sender JID when pushName is absent', async () => {
