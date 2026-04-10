@@ -53,12 +53,32 @@ async function sendTelegramMessage(
 }
 
 /**
- * Extract the bot name suffix from a group folder.
- * e.g., "telegram_sid" → "sid", "telegram_corsa" → "corsa"
+ * Extract the bot name from a group folder.
+ * Supports both channel-prefixed ("telegram_sid" → "sid") and
+ * channel-agnostic ("sid" → "sid") folder names.
  */
-function folderToBotName(folder: string): string | null {
-  if (!folder.startsWith('telegram_')) return null;
-  return folder.slice('telegram_'.length).toLowerCase();
+function folderToBotName(folder: string): string {
+  if (folder.startsWith('telegram_')) return folder.slice('telegram_'.length).toLowerCase();
+  if (folder.startsWith('whatsapp_')) return folder.slice('whatsapp_'.length).toLowerCase();
+  return folder.toLowerCase();
+}
+
+/**
+ * Build a JID for a Telegram chat. In multi-bot mode, private chats share the
+ * same numeric chat ID (the user's Telegram ID) across all bots, so we embed
+ * the bot name to make each JID unique: `tg:<botName>:<chatId>`.
+ */
+function buildTgJid(botName: string, chatId: number | string): string {
+  return `tg:${botName}:${chatId}`;
+}
+
+/**
+ * Extract the numeric Telegram chat ID from a JID.
+ * Handles both `tg:<botName>:<chatId>` and legacy `tg:<chatId>`.
+ */
+function extractChatId(jid: string): string {
+  const parts = jid.replace(/^tg:/, '').split(':');
+  return parts[parts.length - 1];
 }
 
 export class TelegramChannel implements Channel {
@@ -68,10 +88,7 @@ export class TelegramChannel implements Channel {
   private opts: TelegramChannelOpts;
   private botTokens: Map<string, string>; // botName → token
 
-  constructor(
-    botTokens: Map<string, string>,
-    opts: TelegramChannelOpts,
-  ) {
+  constructor(botTokens: Map<string, string>, opts: TelegramChannelOpts) {
     this.botTokens = botTokens;
     this.opts = opts;
   }
@@ -84,7 +101,7 @@ export class TelegramChannel implements Channel {
     const group = this.opts.registeredGroups()[jid];
     if (group) {
       const botName = folderToBotName(group.folder);
-      if (botName && this.bots.has(botName)) {
+      if (this.bots.has(botName)) {
         return this.bots.get(botName);
       }
     }
@@ -155,20 +172,21 @@ export class TelegramChannel implements Channel {
     bot.command('chatid', (ctx) => {
       const chatId = ctx.chat.id;
       const chatType = ctx.chat.type;
+      const chatJid = buildTgJid(botName, chatId);
       const chatName =
         chatType === 'private'
           ? ctx.from?.first_name || 'Private'
           : (ctx.chat as any).title || 'Unknown';
 
       ctx.reply(
-        `Chat ID: \`tg:${chatId}\`\nBot: ${botName}\nName: ${chatName}\nType: ${chatType}`,
+        `Chat ID: \`${chatJid}\`\nBot: ${botName}\nName: ${chatName}\nType: ${chatType}`,
         { parse_mode: 'Markdown' },
       );
     });
 
     // Command to check bot status
     bot.command('ping', (ctx) => {
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = buildTgJid(botName, ctx.chat.id);
       const group = this.opts.registeredGroups()[chatJid];
       const agentName = group?.assistantName || ASSISTANT_NAME;
       ctx.reply(`${agentName} is online.`);
@@ -183,7 +201,7 @@ export class TelegramChannel implements Channel {
         if (TELEGRAM_BOT_COMMANDS.has(cmd)) return;
       }
 
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = buildTgJid(botName, ctx.chat.id);
       let content = ctx.message.text;
       const timestamp = new Date(ctx.message.date * 1000).toISOString();
       const senderName =
@@ -281,7 +299,7 @@ export class TelegramChannel implements Channel {
       placeholder: string,
       opts?: { fileId?: string; filename?: string },
     ) => {
-      const chatJid = `tg:${ctx.chat.id}`;
+      const chatJid = buildTgJid(botName, ctx.chat.id);
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) return;
 
@@ -440,7 +458,7 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const numericId = extractChatId(jid);
       const options = threadId
         ? { message_thread_id: parseInt(threadId, 10) }
         : {};
@@ -448,7 +466,12 @@ export class TelegramChannel implements Channel {
       // Telegram has a 4096 character limit per message — split if needed
       const MAX_LENGTH = 4096;
       if (text.length <= MAX_LENGTH) {
-        await sendTelegramMessage(botInstance.bot.api, numericId, text, options);
+        await sendTelegramMessage(
+          botInstance.bot.api,
+          numericId,
+          text,
+          options,
+        );
       } else {
         for (let i = 0; i < text.length; i += MAX_LENGTH) {
           await sendTelegramMessage(
@@ -464,7 +487,10 @@ export class TelegramChannel implements Channel {
         'Telegram message sent',
       );
     } catch (err) {
-      logger.error({ jid, err, bot: botInstance.name }, 'Failed to send Telegram message');
+      logger.error(
+        { jid, err, bot: botInstance.name },
+        'Failed to send Telegram message',
+      );
     }
   }
 
@@ -489,7 +515,7 @@ export class TelegramChannel implements Channel {
     const botInstance = this.getBotForJid(jid);
     if (!botInstance) return;
     try {
-      const numericId = jid.replace(/^tg:/, '');
+      const numericId = extractChatId(jid);
       await botInstance.bot.api.sendChatAction(numericId, 'typing');
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Telegram typing indicator');
