@@ -39,7 +39,9 @@ export async function transcribeBuffer(
   const apiKey = env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    logger.warn('OPENAI_API_KEY not set in .env — voice transcription disabled');
+    logger.warn(
+      'OPENAI_API_KEY not set in .env — voice transcription disabled',
+    );
     return null;
   }
 

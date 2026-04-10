@@ -422,7 +422,8 @@ export class TelegramChannel implements Channel {
         );
 
         const transcript = await transcribeBuffer(audioBuffer);
-        const content = transcript || '[Voice message - transcription unavailable]';
+        const content =
+          transcript || '[Voice message - transcription unavailable]';
 
         this.opts.onMessage(chatJid, {
           id: ctx.message.message_id.toString(),
