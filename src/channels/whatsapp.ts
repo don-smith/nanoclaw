@@ -357,9 +357,7 @@ export class WhatsAppChannel implements Channel {
     // Skip only when the assistant has its own dedicated phone number.
     const groups = this.opts.registeredGroups();
     const groupName = groups[jid]?.assistantName || ASSISTANT_NAME;
-    const prefixed = ASSISTANT_HAS_OWN_NUMBER
-      ? text
-      : `${groupName}: ${text}`;
+    const prefixed = ASSISTANT_HAS_OWN_NUMBER ? text : `${groupName}: ${text}`;
 
     if (!this.connected) {
       this.outgoingQueue.push({ jid, text: prefixed });
