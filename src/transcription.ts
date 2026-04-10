@@ -3,6 +3,7 @@ import { WAMessage, WASocket } from '@whiskeysockets/baileys';
 import { ProxyAgent } from 'undici';
 
 import { readEnvFile } from './env.js';
+import { logger } from './logger.js';
 
 // Build undici ProxyAgent for media downloads through the firewall proxy
 const proxyUrl =
@@ -24,15 +25,21 @@ const DEFAULT_CONFIG: TranscriptionConfig = {
   fallbackMessage: '[Voice Message - transcription unavailable]',
 };
 
-async function transcribeWithOpenAI(
+/**
+ * Transcribe an audio buffer using OpenAI's Whisper API.
+ * Channel-agnostic — works with any audio source.
+ */
+export async function transcribeBuffer(
   audioBuffer: Buffer,
-  config: TranscriptionConfig,
 ): Promise<string | null> {
+  const config = DEFAULT_CONFIG;
+  if (!config.enabled) return config.fallbackMessage;
+
   const env = readEnvFile(['OPENAI_API_KEY']);
   const apiKey = env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    console.warn('OPENAI_API_KEY not set in .env');
+    logger.warn('OPENAI_API_KEY not set in .env — voice transcription disabled');
     return null;
   }
 
@@ -60,9 +67,9 @@ async function transcribeWithOpenAI(
     });
 
     // When response_format is 'text', the API returns a plain string
-    return transcription as unknown as string;
+    return (transcription as unknown as string)?.trim() || null;
   } catch (err) {
-    console.error('OpenAI transcription failed:', err);
+    logger.error({ err }, 'OpenAI transcription failed');
     return null;
   }
 }
@@ -89,21 +96,21 @@ export async function transcribeAudioMessage(
     )) as Buffer;
 
     if (!buffer || buffer.length === 0) {
-      console.error('Failed to download audio message');
+      logger.error('Failed to download audio message');
       return config.fallbackMessage;
     }
 
-    console.log(`Downloaded audio message: ${buffer.length} bytes`);
+    logger.info({ bytes: buffer.length }, 'Downloaded audio message');
 
-    const transcript = await transcribeWithOpenAI(buffer, config);
+    const transcript = await transcribeBuffer(buffer);
 
     if (!transcript) {
       return config.fallbackMessage;
     }
 
-    return transcript.trim();
+    return transcript;
   } catch (err) {
-    console.error('Transcription error:', err);
+    logger.error({ err }, 'Transcription error');
     return config.fallbackMessage;
   }
 }

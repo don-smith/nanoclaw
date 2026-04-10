@@ -11,6 +11,11 @@ vi.mock('../env.js', () => ({
   readEnvFileByPrefix: vi.fn(() => ({})),
 }));
 
+// Mock transcription
+vi.mock('../transcription.js', () => ({
+  transcribeBuffer: vi.fn().mockResolvedValue('transcribed voice text'),
+}));
+
 // Mock config
 vi.mock('../config.js', () => ({
   ASSISTANT_NAME: 'Andy',
@@ -887,7 +892,7 @@ describe('TelegramChannel', () => {
       );
     });
 
-    it('downloads voice message', async () => {
+    it('transcribes voice message', async () => {
       const opts = createTestOpts();
       const channel = new TelegramChannel(
         new Map([['default', 'test-token']]),
@@ -909,7 +914,7 @@ describe('TelegramChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'tg:default:100200300',
         expect.objectContaining({
-          content: '[Voice message] (/workspace/group/attachments/voice_1.oga)',
+          content: 'transcribed voice text',
         }),
       );
     });

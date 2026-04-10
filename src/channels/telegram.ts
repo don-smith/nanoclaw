@@ -16,6 +16,7 @@ import {
   RegisteredGroup,
 } from '../types.js';
 import { getTriggerPattern } from '../config.js';
+import { transcribeBuffer } from '../transcription.js';
 
 export interface TelegramChannelOpts {
   onMessage: OnInboundMessage;
@@ -58,8 +59,10 @@ async function sendTelegramMessage(
  * channel-agnostic ("sid" → "sid") folder names.
  */
 function folderToBotName(folder: string): string {
-  if (folder.startsWith('telegram_')) return folder.slice('telegram_'.length).toLowerCase();
-  if (folder.startsWith('whatsapp_')) return folder.slice('whatsapp_'.length).toLowerCase();
+  if (folder.startsWith('telegram_'))
+    return folder.slice('telegram_'.length).toLowerCase();
+  if (folder.startsWith('whatsapp_'))
+    return folder.slice('whatsapp_'.length).toLowerCase();
   return folder.toLowerCase();
 }
 
@@ -369,11 +372,76 @@ export class TelegramChannel implements Channel {
         filename: `video_${ctx.message.message_id}`,
       });
     });
-    bot.on('message:voice', (ctx) => {
-      storeMedia(ctx, '[Voice message]', {
-        fileId: ctx.message.voice?.file_id,
-        filename: `voice_${ctx.message.message_id}`,
-      });
+    bot.on('message:voice', async (ctx) => {
+      const chatJid = buildTgJid(botName, ctx.chat.id);
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      const fileId = ctx.message.voice?.file_id;
+      if (!fileId) {
+        storeMedia(ctx, '[Voice message]');
+        return;
+      }
+
+      const timestamp = new Date(ctx.message.date * 1000).toISOString();
+      const senderName =
+        ctx.from?.first_name ||
+        ctx.from?.username ||
+        ctx.from?.id?.toString() ||
+        'Unknown';
+
+      const isGroupChat =
+        ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+      this.opts.onChatMetadata(
+        chatJid,
+        timestamp,
+        undefined,
+        'telegram',
+        isGroupChat,
+      );
+
+      try {
+        // Download the voice file
+        const file = await instance.bot.api.getFile(fileId);
+        if (!file.file_path) {
+          storeMedia(ctx, '[Voice message]');
+          return;
+        }
+
+        const fileUrl = `https://api.telegram.org/file/bot${instance.token}/${file.file_path}`;
+        const resp = await fetch(fileUrl);
+        if (!resp.ok) {
+          storeMedia(ctx, '[Voice message]');
+          return;
+        }
+
+        const audioBuffer = Buffer.from(await resp.arrayBuffer());
+        logger.info(
+          { bytes: audioBuffer.length, bot: botName },
+          'Downloaded Telegram voice message',
+        );
+
+        const transcript = await transcribeBuffer(audioBuffer);
+        const content = transcript || '[Voice message - transcription unavailable]';
+
+        this.opts.onMessage(chatJid, {
+          id: ctx.message.message_id.toString(),
+          chat_jid: chatJid,
+          sender: ctx.from?.id?.toString() || '',
+          sender_name: senderName,
+          content,
+          timestamp,
+          is_from_me: false,
+        });
+
+        logger.info(
+          { chatJid, bot: botName, transcribed: !!transcript },
+          'Telegram voice message processed',
+        );
+      } catch (err) {
+        logger.error({ err, bot: botName }, 'Failed to process voice message');
+        storeMedia(ctx, '[Voice message]');
+      }
     });
     bot.on('message:audio', (ctx) => {
       const name =
