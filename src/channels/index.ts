@@ -10,5 +10,5 @@
 // telegram
 import './telegram.js';
 
-// whatsapp
-import './whatsapp.js';
+// whatsapp (disabled — migrated to Telegram)
+// import './whatsapp.js';
