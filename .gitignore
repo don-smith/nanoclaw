@@ -35,5 +35,8 @@ groups/global/*
 # Skills system (local per-installation state)
 .nanoclaw/
 
+# Git worktrees
+.worktrees/
+
 agents-sdk-docs
 nanoclaw.pid
