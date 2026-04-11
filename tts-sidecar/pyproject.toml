@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "misaki[en]>=0.9.0",
     "kokoro>=0.9.0",
+    "soundfile>=0.12.0",
+    "numpy>=1.26.0",
 ]
 
 [tool.pytest.ini_options]
