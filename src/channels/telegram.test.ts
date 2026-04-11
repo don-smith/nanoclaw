@@ -51,6 +51,14 @@ type Handler = (...args: any[]) => any;
 const botRef = vi.hoisted(() => ({ current: null as any }));
 
 vi.mock('grammy', () => ({
+  InputFile: class MockInputFile {
+    data: any;
+    filename: string | undefined;
+    constructor(data: any, filename?: string) {
+      this.data = data;
+      this.filename = filename;
+    }
+  },
   Bot: class MockBot {
     token: string;
     commandHandlers = new Map<string, Handler>();
@@ -60,6 +68,7 @@ vi.mock('grammy', () => ({
     api = {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       sendChatAction: vi.fn().mockResolvedValue(undefined),
+      sendVoice: vi.fn().mockResolvedValue(undefined),
       getFile: vi.fn().mockResolvedValue({ file_path: 'photos/file_0.jpg' }),
     };
 
@@ -1320,6 +1329,47 @@ describe('TelegramChannel', () => {
       await handler(ctx);
 
       expect(ctx.reply).toHaveBeenCalledWith('Andy is online.');
+    });
+  });
+
+  // --- sendVoice ---
+
+  describe('sendVoice', () => {
+    it('sends an OGG audio buffer as a Telegram voice message', async () => {
+      const opts = createTestOpts();
+      const channel = new TelegramChannel(
+        new Map([['default', 'test-token']]),
+        opts,
+      );
+      await channel.connect();
+
+      const audioBuffer = Buffer.from('fake-ogg-audio-data');
+      await channel.sendVoice('tg:default:100200300', audioBuffer);
+
+      expect(currentBot().api.sendVoice).toHaveBeenCalledWith(
+        '100200300',
+        expect.any(Object), // InputFile
+        expect.objectContaining({}),
+      );
+    });
+
+    it('logs a warning and returns if no bot found for JID', async () => {
+      const opts = createTestOpts({
+        registeredGroups: vi.fn(() => ({})),
+      });
+      // Use multiple bots so the single-bot fallback doesn't apply
+      const channel = new TelegramChannel(
+        new Map([
+          ['bot1', 'token-1'],
+          ['bot2', 'token-2'],
+        ]),
+        opts,
+      );
+      await channel.connect();
+
+      const audioBuffer = Buffer.from('fake-ogg-audio-data');
+      await channel.sendVoice('tg:unknown:99999', audioBuffer);
+      expect(currentBot().api.sendVoice).not.toHaveBeenCalled();
     });
   });
 
