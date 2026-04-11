@@ -14,7 +14,6 @@ import {
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import {
-  detectSpeechTrigger,
   getVoiceForGroup,
   synthesizeSpeech,
   ensureSidecarRunning,
@@ -225,11 +224,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
-  // Check if any user message requests voice response
-  const wantsSpeech = missedMessages.some(
-    (m) => !m.is_bot_message && detectSpeechTrigger(m.content),
-  );
-
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
     const triggerPattern = getTriggerPattern(group.trigger);
@@ -292,15 +286,17 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
 
-        // Queue TTS if speech was requested and channel supports voice
-        if (wantsSpeech && channel.sendVoice) {
+        // Always send a voice version if the channel supports it.
+        // Failures are logged but not surfaced to the user — the text
+        // response is already delivered, so there's no action to take.
+        if (channel.sendVoice) {
           const voice = getVoiceForGroup(group.folder);
           ensureSidecarRunning()
             .then(async (ready) => {
               if (!ready) {
-                await channel.sendMessage(
-                  chatJid,
-                  '\u26a0\ufe0f TTS: Could not start the voice sidecar. Text response was delivered above.',
+                logger.warn(
+                  { group: group.name },
+                  'TTS sidecar unavailable, skipping voice message',
                 );
                 return;
               }
@@ -308,9 +304,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               if (audio) {
                 await channel.sendVoice!(chatJid, audio);
               } else {
-                await channel.sendMessage(
-                  chatJid,
-                  '\u26a0\ufe0f TTS: Voice generation failed. Text response was delivered above.',
+                logger.warn(
+                  { group: group.name },
+                  'TTS synthesis failed, skipping voice message',
                 );
               }
             })
@@ -319,12 +315,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
                 { err, group: group.name },
                 'TTS voice send failed',
               );
-              channel
-                .sendMessage(
-                  chatJid,
-                  '\u26a0\ufe0f TTS: Voice generation failed. Text response was delivered above.',
-                )
-                .catch(() => {});
             });
         }
       }

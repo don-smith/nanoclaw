@@ -13,16 +13,6 @@ const VOICE_MAP: Record<string, string> = {
   telegram_brian: 'am_echo',
 };
 
-// --- Trigger Detection ---
-
-/**
- * Check if a user message requests a voice response.
- * Matches "for speech" as a case-insensitive substring.
- */
-export function detectSpeechTrigger(text: string): boolean {
-  return text.toLowerCase().includes('for speech');
-}
-
 /**
  * Get the Kokoro voice preset for a group folder name.
  * Falls back to TTS_DEFAULT_VOICE for unmapped groups.

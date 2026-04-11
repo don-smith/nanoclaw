@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  detectSpeechTrigger,
   getVoiceForGroup,
   synthesizeSpeech,
   checkSidecarHealth,
@@ -8,36 +7,6 @@ import {
   stopSidecar,
   ensureSidecarRunning,
 } from './tts.js';
-
-// --- Trigger Detection ---
-
-describe('detectSpeechTrigger', () => {
-  it('detects "format for speech" in a message', () => {
-    expect(
-      detectSpeechTrigger('Please format your response for speech'),
-    ).toBe(true);
-  });
-
-  it('detects "for speech" case-insensitively', () => {
-    expect(detectSpeechTrigger('Format this For Speech please')).toBe(true);
-  });
-
-  it('detects "for speech" at end of message', () => {
-    expect(detectSpeechTrigger('respond for speech')).toBe(true);
-  });
-
-  it('returns false when phrase is absent', () => {
-    expect(detectSpeechTrigger('Tell me about speech recognition')).toBe(false);
-  });
-
-  it('returns false for empty string', () => {
-    expect(detectSpeechTrigger('')).toBe(false);
-  });
-
-  it('returns false for messages that contain "speech" but not "for speech"', () => {
-    expect(detectSpeechTrigger('I gave a speech today')).toBe(false);
-  });
-});
 
 // --- Voice Mapping ---
 
