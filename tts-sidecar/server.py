@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import subprocess
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 logger = logging.getLogger("nanoclaw-tts")
 logging.basicConfig(level=logging.INFO)
-
-app = FastAPI(title="NanoClaw TTS Sidecar")
 
 _pipeline = None
 
@@ -26,7 +28,6 @@ class SynthesizeRequest(BaseModel):
     voice: str = DEFAULT_VOICE
 
 
-@app.on_event("startup")
 async def load_model() -> None:
     global _pipeline
     try:
@@ -35,6 +36,15 @@ async def load_model() -> None:
         logger.info("Kokoro model loaded successfully")
     except Exception:
         logger.exception("Failed to load Kokoro model")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await load_model()
+    yield
+
+
+app = FastAPI(title="NanoClaw TTS Sidecar", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -84,9 +94,6 @@ async def synthesize(req: SynthesizeRequest) -> Response:
         raise HTTPException(status_code=400, detail="Text is empty")
 
     try:
-        import soundfile as sf
-        import numpy as np
-
         segments = []
         for _gs, _ps, audio in _pipeline(req.text, voice=req.voice, speed=VOICE_SPEED):
             segments.append(audio)
@@ -100,7 +107,7 @@ async def synthesize(req: SynthesizeRequest) -> Response:
         sf.write(wav_buf, full_audio, 24000, format="WAV")
         wav_bytes = wav_buf.getvalue()
 
-        ogg_bytes = _wav_to_ogg_opus(wav_bytes)
+        ogg_bytes = await asyncio.to_thread(_wav_to_ogg_opus, wav_bytes)
 
         return Response(content=ogg_bytes, media_type="audio/ogg")
 
