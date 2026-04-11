@@ -1,0 +1,17 @@
+[project]
+name = "nanoclaw-tts-sidecar"
+version = "0.1.0"
+description = "Kokoro TTS sidecar for NanoClaw voice messages"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "misaki[en]>=0.9.0",
+    "kokoro>=0.9.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "httpx>=0.28.0", "pytest-asyncio>=0.25.0"]
