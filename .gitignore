@@ -38,5 +38,11 @@ groups/global/*
 # Git worktrees
 .worktrees/
 
+# TTS sidecar (Python)
+tts-sidecar/.venv/
+tts-sidecar/__pycache__/
+tts-sidecar/*.egg-info/
+tts-sidecar/uv.lock
+
 agents-sdk-docs
 nanoclaw.pid
