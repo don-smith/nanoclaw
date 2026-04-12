@@ -99,10 +99,134 @@ def read_secrets(env_file: Path) -> dict:
 def get_groups(db: Path) -> list[dict]:
     conn = sqlite3.connect(db)
     rows = conn.execute(
-        "SELECT jid, name, folder, is_main FROM registered_groups ORDER BY name"
+        "SELECT jid, name, folder, is_main, container_config "
+        "FROM registered_groups ORDER BY name"
     ).fetchall()
     conn.close()
-    return [{"jid": r[0], "name": r[1], "folder": r[2], "is_main": bool(r[3])} for r in rows]
+    groups = []
+    for r in rows:
+        container_config = None
+        if r[4]:
+            try:
+                container_config = json.loads(r[4])
+            except (json.JSONDecodeError, TypeError):
+                container_config = None
+        groups.append({
+            "jid": r[0],
+            "name": r[1],
+            "folder": r[2],
+            "is_main": bool(r[3]),
+            "container_config": container_config,
+        })
+    return groups
+
+
+# ── Additional-mount resolution (mirrors src/mount-security.ts) ─────────────
+
+MOUNT_ALLOWLIST_PATH = Path.home() / ".config" / "nanoclaw" / "mount-allowlist.json"
+
+
+def _load_mount_allowlist() -> dict | None:
+    """Load the mount allowlist; None if missing or invalid."""
+    if not MOUNT_ALLOWLIST_PATH.exists():
+        return None
+    try:
+        data = json.loads(MOUNT_ALLOWLIST_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data.get("allowedRoots"), list):
+        return None
+    return data
+
+
+def _expand_path(p: str) -> Path:
+    return Path(os.path.expanduser(p)).resolve()
+
+
+def _validate_additional_mount(
+    mount: dict, allowlist: dict, is_main: bool
+) -> tuple[Path, str, bool] | None:
+    """Return (host_path, container_path, readonly) or None if rejected.
+
+    Mirrors the harness's validation in src/mount-security.ts: the host
+    path must exist and fall under an allowedRoot, not match a blocked
+    pattern, and the readonly flag is constrained by allowlist rules.
+    """
+    host = mount.get("hostPath")
+    if not host or not isinstance(host, str):
+        return None
+    host_path = _expand_path(host)
+    if not host_path.exists():
+        dbg(f"additional mount rejected — host path missing: {host_path}")
+        return None
+
+    blocked = allowlist.get("blockedPatterns") or []
+    host_str = str(host_path)
+    for pat in blocked:
+        if isinstance(pat, str) and pat and pat in host_str:
+            dbg(f"additional mount rejected — blocked pattern {pat!r}: {host_path}")
+            return None
+
+    # Must fall under an allowedRoot.
+    allowed_roots = allowlist.get("allowedRoots") or []
+    matched_root = None
+    for root in allowed_roots:
+        root_path_str = root.get("path")
+        if not root_path_str:
+            continue
+        root_path = _expand_path(root_path_str)
+        try:
+            host_path.relative_to(root_path)
+        except ValueError:
+            continue
+        matched_root = root
+        break
+    if matched_root is None:
+        dbg(f"additional mount rejected — outside allowedRoots: {host_path}")
+        return None
+
+    requested_ro = bool(mount.get("readonly", True))
+    # Honor nonMainReadOnly: non-main groups forced to RO unless the
+    # matched root explicitly grants RW.
+    root_rw = bool(matched_root.get("allowReadWrite", False))
+    non_main_ro = bool(allowlist.get("nonMainReadOnly", True))
+    if not is_main and non_main_ro and not root_rw:
+        readonly = True
+    else:
+        readonly = requested_ro
+
+    container_name = mount.get("containerPath") or host_path.name
+    container_path = f"/workspace/extra/{container_name}"
+    return (host_path, container_path, readonly)
+
+
+def get_additional_mounts(
+    group: dict,
+) -> list[tuple[str, str, bool]]:
+    """Resolve a group's additionalMounts into (host, container, ro) tuples."""
+    cfg = group.get("container_config") or {}
+    mounts_cfg = cfg.get("additionalMounts") or []
+    if not mounts_cfg:
+        return []
+
+    allowlist = _load_mount_allowlist()
+    if allowlist is None:
+        print(
+            "warning: additionalMounts configured but mount-allowlist.json "
+            f"not found at {MOUNT_ALLOWLIST_PATH} — skipping extra mounts",
+            file=sys.stderr,
+        )
+        return []
+
+    resolved = []
+    for m in mounts_cfg:
+        if not isinstance(m, dict):
+            continue
+        entry = _validate_additional_mount(m, allowlist, group.get("is_main", False))
+        if entry is not None:
+            host, container, ro = entry
+            resolved.append((str(host), container, ro))
+    return resolved
 
 
 def find_group(groups: list[dict], query: str) -> dict | None:
@@ -121,7 +245,9 @@ def find_group(groups: list[dict], query: str) -> dict | None:
     return None
 
 
-def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
+def build_mounts(
+    folder: str, is_main: bool, group: dict | None = None
+) -> list[tuple[str, str, bool]]:
     """Return list of (host_path, container_path, readonly) tuples."""
     groups_dir  = NANOCLAW_DIR / "groups"
     data_dir    = NANOCLAW_DIR / "data"
@@ -149,12 +275,20 @@ def build_mounts(folder: str, is_main: bool) -> list[tuple[str, str, bool]]:
     mounts.append((str(ipc_dir),             "/workspace/ipc",      False))
     if agent_runner_src.exists():
         mounts.append((str(agent_runner_src), "/app/src",           False))
+
+    # Additional per-group mounts (e.g., workspace-extra). These mirror
+    # what the harness mounts for Telegram-driven containers, so the
+    # agent has the same filesystem view regardless of how it was
+    # invoked.
+    if group is not None:
+        mounts.extend(get_additional_mounts(group))
+
     return mounts
 
 
 def run_container(runtime: str, image: str, payload: dict,
                   folder: str | None = None, is_main: bool = False,
-                  timeout: int = 300) -> None:
+                  timeout: int = 300, group: dict | None = None) -> None:
     cmd = [runtime, "run", "-i", "--rm"]
     # Pass secrets as env vars so the Claude CLI inside the container
     # authenticates. The harness also sets HOME so Claude's config
@@ -163,13 +297,28 @@ def run_container(runtime: str, image: str, payload: dict,
         cmd += ["-e", f"{key}={val}"]
     cmd += ["-e", "HOME=/home/node"]
     if folder:
-        for host, container, readonly in build_mounts(folder, is_main):
+        for host, container, readonly in build_mounts(folder, is_main, group):
             if readonly:
                 cmd += ["--mount", f"type=bind,source={host},target={container},readonly"]
             else:
                 cmd += ["-v", f"{host}:{container}"]
     cmd.append(image)
-    dbg(f"cmd: {' '.join(cmd)}")
+    # Redact secret values when logging the command — otherwise -v mode
+    # would print the full OAuth token to the terminal.
+    secret_vals = set(payload.get("secrets", {}).values())
+    safe_cmd = [
+        (("-e " + part.split("=", 1)[0] + "=***")
+         if part.split("=", 1)[-1] in secret_vals
+         else part)
+        for part in cmd
+    ]
+    # Above logic also handles the "-e KEY=VAL" tokens since we emit them
+    # as separate args ("-e", "KEY=VAL"); redact the KEY=VAL half.
+    safe_cmd = [
+        f"{p.split('=', 1)[0]}=***" if "=" in p and p.split("=", 1)[1] in secret_vals else p
+        for p in cmd
+    ]
+    dbg(f"cmd: {' '.join(safe_cmd)}")
 
     # Show payload sans secrets
     if VERBOSE:
@@ -332,6 +481,7 @@ def main():
     group_name = None
     group_folder = None
     is_main = False
+    selected_group: dict | None = None
 
     if args.group:
         g = find_group(groups, args.group)
@@ -341,7 +491,18 @@ def main():
         group_name = g["name"]
         group_folder = g["folder"]
         is_main = g["is_main"]
-    elif not jid:
+        selected_group = g
+    elif args.jid:
+        # JID was supplied directly — look up the matching group row so
+        # container_config (and thus additional mounts) is included.
+        for g in groups:
+            if g["jid"] == args.jid:
+                group_name = g["name"]
+                group_folder = g["folder"]
+                is_main = g["is_main"]
+                selected_group = g
+                break
+    else:
         # Default: main group
         mains = [g for g in groups if g["is_main"]]
         if mains:
@@ -349,6 +510,7 @@ def main():
             group_name = mains[0]["name"]
             group_folder = mains[0]["folder"]
             is_main = True
+            selected_group = mains[0]
         else:
             sys.exit("error: no group specified and no main group found. Use -g or -j.")
 
@@ -373,7 +535,7 @@ def main():
     print(f"[{group_name or jid}] running via {runtime}...", file=sys.stderr)
     run_container(runtime, args.image, payload,
                   folder=group_folder, is_main=is_main,
-                  timeout=args.timeout)
+                  timeout=args.timeout, group=selected_group)
 
 
 if __name__ == "__main__":

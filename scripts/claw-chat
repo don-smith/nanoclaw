@@ -26,9 +26,19 @@ import sys
 from pathlib import Path
 
 # Enable readline so `input()` supports long lines (beyond the tty's
-# ~1024-char canonical-mode limit), arrow-key editing, and history.
+# ~1024-char canonical-mode limit) and left/right cursor editing.
+# Disable history navigation on Up/Down since we don't use it — the
+# default bindings would otherwise wipe the user's in-progress message.
 try:
     import readline  # noqa: F401
+    # Unbind the arrow-up / arrow-down escape sequences so they do nothing.
+    readline.parse_and_bind(r'"\e[A": ""')
+    readline.parse_and_bind(r'"\e[B": ""')
+    # Also disable automatic history so nothing accumulates.
+    try:
+        readline.set_auto_history(False)
+    except AttributeError:
+        pass
 except ImportError:
     pass
 
