@@ -11,24 +11,24 @@ import {
 // --- Voice Mapping ---
 
 describe('getVoiceForGroup', () => {
-  it('returns bm_fable for telegram_sid', () => {
-    expect(getVoiceForGroup('telegram_sid')).toBe('bm_fable');
+  it('returns bm_fable for sid', () => {
+    expect(getVoiceForGroup('sid')).toBe('bm_fable');
   });
 
-  it('returns bf_emma for telegram_corsa', () => {
-    expect(getVoiceForGroup('telegram_corsa')).toBe('bf_emma');
+  it('returns bf_emma for corsa', () => {
+    expect(getVoiceForGroup('corsa')).toBe('bf_emma');
   });
 
-  it('returns af_sky for telegram_paula', () => {
-    expect(getVoiceForGroup('telegram_paula')).toBe('af_sky');
+  it('returns af_sky for paula', () => {
+    expect(getVoiceForGroup('paula')).toBe('af_sky');
   });
 
-  it('returns am_michael for telegram_brian', () => {
-    expect(getVoiceForGroup('telegram_brian')).toBe('am_michael');
+  it('returns am_michael for brian', () => {
+    expect(getVoiceForGroup('brian')).toBe('am_michael');
   });
 
   it('returns default voice af_heart for unknown groups', () => {
-    expect(getVoiceForGroup('telegram_unknown')).toBe('af_heart');
+    expect(getVoiceForGroup('unknown')).toBe('af_heart');
   });
 });
 
