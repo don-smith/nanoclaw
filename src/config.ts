@@ -61,6 +61,9 @@ export const TTS_SIDECAR_PORT = parseInt(
   10,
 );
 export const TTS_DEFAULT_VOICE = process.env.TTS_DEFAULT_VOICE || 'af_heart';
+// Minimum character count to trigger voice synthesis — short messages
+// are easier to read than listen to. Set to 0 to voice every response.
+export const TTS_MIN_CHARS = parseInt(process.env.TTS_MIN_CHARS || '200', 10);
 export const MAX_MESSAGES_PER_PROMPT = Math.max(
   1,
   parseInt(process.env.MAX_MESSAGES_PER_PROMPT || '10', 10) || 10,

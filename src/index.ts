@@ -11,6 +11,7 @@ import {
   MAX_MESSAGES_PER_PROMPT,
   POLL_INTERVAL,
   TIMEZONE,
+  TTS_MIN_CHARS,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import {
@@ -286,10 +287,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
 
-        // Always send a voice version if the channel supports it.
-        // Failures are logged but not surfaced to the user — the text
-        // response is already delivered, so there's no action to take.
-        if (channel.sendVoice) {
+        // Send a voice version if the channel supports it and the text
+        // is long enough to be worth listening to (short messages are
+        // faster to read). Failures are logged silently since the text
+        // response is already delivered.
+        if (channel.sendVoice && text.length >= TTS_MIN_CHARS) {
           const voice = getVoiceForGroup(group.folder);
           ensureSidecarRunning()
             .then(async (ready) => {
@@ -311,10 +313,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               }
             })
             .catch((err) => {
-              logger.error(
-                { err, group: group.name },
-                'TTS voice send failed',
-              );
+              logger.error({ err, group: group.name }, 'TTS voice send failed');
             });
         }
       }
