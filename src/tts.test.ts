@@ -23,8 +23,8 @@ describe('getVoiceForGroup', () => {
     expect(getVoiceForGroup('telegram_paula')).toBe('af_sky');
   });
 
-  it('returns am_echo for telegram_brian', () => {
-    expect(getVoiceForGroup('telegram_brian')).toBe('am_echo');
+  it('returns am_michael for telegram_brian', () => {
+    expect(getVoiceForGroup('telegram_brian')).toBe('am_michael');
   });
 
   it('returns default voice af_heart for unknown groups', () => {

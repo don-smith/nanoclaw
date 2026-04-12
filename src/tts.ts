@@ -7,10 +7,10 @@ import { logger } from './logger.js';
 // --- Voice Mapping ---
 
 const VOICE_MAP: Record<string, string> = {
-  telegram_sid: 'bm_fable',
-  telegram_corsa: 'bf_emma',
-  telegram_paula: 'af_sky',
-  telegram_brian: 'am_echo',
+  telegram_sid: 'bm_fable', // British male, grade C
+  telegram_corsa: 'bf_emma', // British female, grade B-
+  telegram_paula: 'af_sky', // American female, grade B
+  telegram_brian: 'am_michael', // American male, grade C+
 };
 
 /**

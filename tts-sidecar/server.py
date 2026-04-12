@@ -17,7 +17,11 @@ from pydantic import BaseModel
 logger = logging.getLogger("nanoclaw-tts")
 logging.basicConfig(level=logging.INFO)
 
-_pipeline = None
+# One pipeline per language code. Kokoro voice names are prefixed with
+# the language: "a*" = American English, "b*" = British English, etc.
+# The language used for G2P must match the voice's language, or British
+# voices will be spoken with American phonetics (and vice versa).
+_pipelines: dict[str, object] = {}
 
 DEFAULT_VOICE = "af_heart"
 VOICE_SPEED = 1.0
@@ -28,14 +32,33 @@ class SynthesizeRequest(BaseModel):
     voice: str = DEFAULT_VOICE
 
 
+def _lang_code_for_voice(voice: str) -> str:
+    """Derive the Kokoro lang_code from a voice name's first character."""
+    if not voice:
+        return "a"
+    return voice[0].lower()
+
+
 async def load_model() -> None:
-    global _pipeline
+    """Preload pipelines for the language codes we use."""
+    global _pipelines
     try:
         from kokoro import KPipeline
-        _pipeline = KPipeline(lang_code="a")
-        logger.info("Kokoro model loaded successfully")
+        for lang_code in ("a", "b"):
+            _pipelines[lang_code] = KPipeline(lang_code=lang_code)
+            logger.info(f"Kokoro pipeline loaded for lang_code={lang_code!r}")
     except Exception:
         logger.exception("Failed to load Kokoro model")
+
+
+def _get_pipeline(voice: str):
+    """Get (or lazily create) the pipeline matching the voice's language."""
+    lang_code = _lang_code_for_voice(voice)
+    if lang_code not in _pipelines:
+        from kokoro import KPipeline
+        _pipelines[lang_code] = KPipeline(lang_code=lang_code)
+        logger.info(f"Kokoro pipeline lazy-loaded for lang_code={lang_code!r}")
+    return _pipelines[lang_code]
 
 
 @asynccontextmanager
@@ -51,7 +74,8 @@ app = FastAPI(title="NanoClaw TTS Sidecar", lifespan=lifespan)
 async def health() -> dict:
     return {
         "status": "ok",
-        "model_loaded": _pipeline is not None,
+        "model_loaded": bool(_pipelines),
+        "languages_loaded": sorted(_pipelines.keys()),
     }
 
 
@@ -87,15 +111,16 @@ def _wav_to_ogg_opus(wav_bytes: bytes) -> bytes:
 
 @app.post("/synthesize")
 async def synthesize(req: SynthesizeRequest) -> Response:
-    if _pipeline is None:
+    if not _pipelines:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text is empty")
 
     try:
+        pipeline = _get_pipeline(req.voice)
         segments = []
-        for _gs, _ps, audio in _pipeline(req.text, voice=req.voice, speed=VOICE_SPEED):
+        for _gs, _ps, audio in pipeline(req.text, voice=req.voice, speed=VOICE_SPEED):
             segments.append(audio)
 
         if not segments:

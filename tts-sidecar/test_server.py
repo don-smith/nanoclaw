@@ -14,7 +14,7 @@ def anyio_backend():
 async def _load_model_once():
     """Load the Kokoro model once for all tests in this module."""
     await server.load_model()
-    assert server._pipeline is not None, "Kokoro model failed to load"
+    assert server._pipelines, "Kokoro model failed to load"
 
 
 @pytest.mark.asyncio
