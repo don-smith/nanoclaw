@@ -495,9 +495,7 @@ async function startMessageLoop(): Promise<void> {
               { ageMs, count: messages.length },
               'Deferring — messages still settling (possible split)',
             );
-            await new Promise((resolve) =>
-              setTimeout(resolve, POLL_INTERVAL),
-            );
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
         }
