@@ -25,6 +25,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Enable readline so `input()` supports long lines (beyond the tty's
+# ~1024-char canonical-mode limit), arrow-key editing, and history.
+try:
+    import readline  # noqa: F401
+except ImportError:
+    pass
+
 
 # Locate the `claw` script next to this one.
 CLAW = Path(__file__).resolve().parent / "claw"
@@ -88,6 +95,11 @@ def run_turn(agent: str, prompt: str, session_id: str | None) -> str | None:
 
     stdout_buf: list[str] = []
     stderr_buf: list[str] = []
+
+    # Print a labeled header for the response. Title-cased so "sid"
+    # becomes "Sid>" — matches how the agents refer to themselves.
+    label = (agent.capitalize() if agent else "agent")
+    print(f"{CYAN}{label}>{RESET} ", end="", flush=True)
 
     # Stream stdout live so the user sees the answer as it arrives.
     # (claw currently buffers until the container exits, but this
