@@ -19,6 +19,13 @@ export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const POLL_INTERVAL = 2000;
+// When a message arrives, wait this long before processing in case the
+// user's client split a long message into multiple parts. Next poll
+// cycle will pick up all parts together. Set to 0 to disable.
+export const MESSAGE_SETTLE_MS = parseInt(
+  process.env.MESSAGE_SETTLE_MS || '2500',
+  10,
+);
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths needed for container mounts

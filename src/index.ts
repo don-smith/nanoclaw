@@ -9,6 +9,7 @@ import {
   GROUPS_DIR,
   IDLE_TIMEOUT,
   MAX_MESSAGES_PER_PROMPT,
+  MESSAGE_SETTLE_MS,
   POLL_INTERVAL,
   TIMEZONE,
   TTS_MIN_CHARS,
@@ -478,6 +479,29 @@ async function startMessageLoop(): Promise<void> {
       );
 
       if (messages.length > 0) {
+        // Split-message debounce: clients (especially Telegram mobile)
+        // split long messages into multiple parts that arrive seconds
+        // apart. If the newest message is still fresh, defer this cycle
+        // so the next poll can batch all parts into one agent turn.
+        // Crucially, we do NOT advance lastTimestamp while deferring —
+        // otherwise the next poll wouldn't re-detect these messages.
+        if (MESSAGE_SETTLE_MS > 0) {
+          const latestMs = Math.max(
+            ...messages.map((m) => new Date(m.timestamp).getTime()),
+          );
+          const ageMs = Date.now() - latestMs;
+          if (ageMs < MESSAGE_SETTLE_MS) {
+            logger.debug(
+              { ageMs, count: messages.length },
+              'Deferring — messages still settling (possible split)',
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, POLL_INTERVAL),
+            );
+            continue;
+          }
+        }
+
         logger.info({ count: messages.length }, 'New messages');
 
         // Advance the "seen" cursor for all messages immediately
