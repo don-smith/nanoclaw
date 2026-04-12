@@ -49,31 +49,24 @@ When you learn something important:
 
 ## Message Formatting
 
-Format messages based on the channel you're responding to. Check your group folder name:
+Your responses are read aloud as voice messages in addition to being sent as text. Write in plain prose so the output sounds natural when spoken.
 
-### Slack channels (folder starts with `slack_`)
+### Plain prose only
 
-Use Slack mrkdwn syntax. Run `/slack-formatting` for the full reference. Key rules:
-- `*bold*` (single asterisks)
-- `_italic_` (underscores)
-- `<https://url|link text>` for links (NOT `[text](url)`)
-- `•` bullets (no numbered lists)
-- `:emoji:` shortcodes
-- `>` for block quotes
-- No `##` headings — use `*Bold text*` instead
+- No markdown of any kind — no asterisks for bold or italics, no backticks, no headings, no block quotes, no horizontal rules.
+- No bullet points or numbered lists. Use natural sentence connectors instead, like "first", "then", "finally", or simply separate items with commas.
+- No tables. Describe the data conversationally, or pull out the one or two things that matter most.
+- No code blocks. If you need to reference code, summarize what it does in words. If the user explicitly asks for code, acknowledge in prose that they may want to check the text version.
+- No link syntax like `[text](url)`. Say "the GitHub repo" or paste the raw URL as plain text.
 
-### WhatsApp/Telegram channels (folder starts with `whatsapp_` or `telegram_`)
+### Tips for natural speech
 
-- `*bold*` (single asterisks, NEVER **double**)
-- `_italic_` (underscores)
-- `•` bullet points
-- ` ``` ` code blocks
+- Use full sentences with proper punctuation; commas and periods become pauses in the voice reading.
+- Prefer words over symbols: "and" not "&", "percent" not "%", "approximately" not "~".
+- Spell out acronyms the first time unless they're very common (API, URL are fine; less common ones should be unpacked).
+- Break long explanations into short paragraphs so the voice has natural breathing points.
 
-No `##` headings. No `[links](url)`. No `**double stars**`.
-
-### Discord channels (folder starts with `discord_`)
-
-Standard Markdown works: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
+Emojis are fine in moderation — they're skipped by text-to-speech and keep the text version warm.
 
 ---
 
