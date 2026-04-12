@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""
+claw-chat — Interactive REPL for NanoClaw agents.
+
+Wraps `claw` in a read-eval-print loop so you can have a back-and-forth
+conversation with a single agent in the terminal. Session IDs are
+captured from claw's output and passed to the next turn, so context
+is preserved across turns.
+
+Usage:
+  claw-chat <agent>        e.g. claw-chat sid
+  claw-chat                defaults to the main group
+
+Commands inside the REPL:
+  :exit, :quit, :q  — exit the chat
+  Ctrl-D, Ctrl-C    — exit the chat
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+
+# Locate the `claw` script next to this one.
+CLAW = Path(__file__).resolve().parent / "claw"
+
+
+# ANSI color codes — terminal-only cosmetic sugar.
+def _color(code: str) -> str:
+    return code if sys.stdout.isatty() else ""
+
+
+DIM = _color("\033[2m")
+BOLD = _color("\033[1m")
+CYAN = _color("\033[36m")
+GREEN = _color("\033[32m")
+YELLOW = _color("\033[33m")
+RESET = _color("\033[0m")
+
+
+EXIT_WORDS = {":exit", ":quit", ":q", "exit", "quit"}
+
+
+def banner(agent: str) -> None:
+    print(f"{BOLD}{CYAN}═══ chat with {agent} ═══{RESET}")
+    print(f"{DIM}Type a message and press Enter. "
+          f"Type {BOLD}:q{RESET}{DIM}, {BOLD}:exit{RESET}{DIM}, or press "
+          f"Ctrl-D to leave.{RESET}\n")
+
+
+def read_multiline_input() -> str | None:
+    """Read a single message from stdin. Returns None on EOF."""
+    try:
+        line = input(f"{GREEN}you>{RESET} ")
+    except EOFError:
+        print()
+        return None
+    except KeyboardInterrupt:
+        print("\n(interrupted)")
+        return ""
+    return line
+
+
+def run_turn(agent: str, prompt: str, session_id: str | None) -> str | None:
+    """Send one turn through claw. Returns the new session_id, or None on error."""
+    cmd = [str(CLAW)]
+    if agent:
+        cmd += ["-g", agent]
+    if session_id:
+        cmd += ["-s", session_id]
+    cmd.append(prompt)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError:
+        print(f"error: claw not found at {CLAW}", file=sys.stderr)
+        return None
+
+    stdout_buf: list[str] = []
+    stderr_buf: list[str] = []
+
+    # Stream stdout live so the user sees the answer as it arrives.
+    # (claw currently buffers until the container exits, but this
+    # doesn't hurt and will light up automatically if claw ever streams.)
+    for line in proc.stdout:  # type: ignore[union-attr]
+        stdout_buf.append(line)
+        sys.stdout.write(line)
+        sys.stdout.flush()
+
+    # Drain stderr after stdout closes. claw writes "[session: ...]" here.
+    proc.wait()
+    if proc.stderr:
+        stderr_buf = proc.stderr.read().splitlines()
+
+    if proc.returncode != 0:
+        for line in stderr_buf:
+            print(f"{YELLOW}{line}{RESET}", file=sys.stderr)
+        print(f"{YELLOW}(claw exited {proc.returncode}){RESET}", file=sys.stderr)
+        return session_id  # keep the old session so the user can retry
+
+    # Extract new session id if claw printed one.
+    new_session = session_id
+    for line in stderr_buf:
+        m = re.search(r"\[session:\s*([0-9a-fA-F-]+)\]", line)
+        if m:
+            new_session = m.group(1)
+
+    return new_session
+
+
+def main() -> int:
+    # Agent can come from either the invocation name (if invoked via a
+    # per-agent symlink like `sid`, `corsa`, etc.) or the first arg.
+    invoked_as = Path(sys.argv[0]).name
+    if invoked_as not in ("claw-chat", "claw-chat.py"):
+        agent = invoked_as
+    else:
+        agent = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if not CLAW.exists():
+        print(
+            f"error: claw script not found at {CLAW}\n"
+            f"Install it first: cp .claude/skills/claw/scripts/claw scripts/claw",
+            file=sys.stderr,
+        )
+        return 1
+
+    banner(agent or "main group")
+    session_id: str | None = None
+
+    while True:
+        prompt = read_multiline_input()
+        if prompt is None:
+            break
+        prompt = prompt.strip()
+        if not prompt:
+            continue
+        if prompt.lower() in EXIT_WORDS:
+            break
+
+        # Blank line before claw's output so it visually separates from the prompt.
+        print()
+        new_session = run_turn(agent, prompt, session_id)
+        if new_session:
+            session_id = new_session
+        # Trailing newline after claw's output before the next prompt.
+        print()
+
+    print(f"{DIM}bye.{RESET}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
