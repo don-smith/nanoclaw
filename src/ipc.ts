@@ -23,6 +23,7 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  invokeAgent: (folder: string, prompt: string) => Promise<void>;
 }
 
 let ipcWatcherRunning = false;
@@ -155,6 +156,9 @@ export async function processTaskIpc(
     trigger?: string;
     requiresTrigger?: boolean;
     containerConfig?: RegisteredGroup['containerConfig'];
+    // For invoke_agent
+    agent?: string;
+    text?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -163,6 +167,21 @@ export async function processTaskIpc(
   const registeredGroups = deps.registeredGroups();
 
   switch (data.type) {
+    case 'invoke_agent':
+      if (typeof data.agent === 'string' && typeof data.text === 'string') {
+        await deps.invokeAgent(data.agent, data.text);
+        logger.info(
+          { agent: data.agent, sourceGroup },
+          'IPC invoke_agent dispatched',
+        );
+      } else {
+        logger.warn(
+          { data },
+          'Invalid invoke_agent request - missing agent or text',
+        );
+      }
+      break;
+
     case 'schedule_task':
       if (
         data.prompt &&

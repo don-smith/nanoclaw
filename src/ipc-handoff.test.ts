@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { _initTestDatabase, setRegisteredGroup } from './db.js';
-import { processMessageIpc, IpcDeps } from './ipc.js';
+import { processMessageIpc, processTaskIpc, IpcDeps } from './ipc.js';
 import { RegisteredGroup } from './types.js';
 
 const BRIAN: RegisteredGroup = {
@@ -40,56 +40,14 @@ beforeEach(() => {
     getAvailableGroups: () => [],
     writeGroupsSnapshot: () => {},
     onTasksChanged: () => {},
+    invokeAgent: async () => {},
   };
-});
-
-describe('processMessageIpc agent resolution', () => {
-  it('resolves agent name to the matching folder JID', async () => {
-    await processMessageIpc(
-      { type: 'message', agent: 'sid', text: 'hello' },
-      'brian',
-      deps,
-    );
-    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello');
-  });
-
-  it('lowercases agent name before matching', async () => {
-    await processMessageIpc(
-      { type: 'message', agent: 'SID', text: 'hello' },
-      'brian',
-      deps,
-    );
-    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello');
-  });
-
-  it('drops the message when agent name does not match any folder', async () => {
-    await processMessageIpc(
-      { type: 'message', agent: 'mavis', text: 'hello' },
-      'brian',
-      deps,
-    );
-    expect(sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('prefers chatJid when both chatJid and agent are present', async () => {
-    await processMessageIpc(
-      {
-        type: 'message',
-        chatJid: 'brian@dm',
-        agent: 'sid',
-        text: 'hello',
-      },
-      'brian',
-      deps,
-    );
-    expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'hello');
-  });
 });
 
 describe('processMessageIpc cross-folder authorization', () => {
   it('allows non-main source to send to a different folder', async () => {
     await processMessageIpc(
-      { type: 'message', agent: 'sid', text: 'hello sid' },
+      { type: 'message', chatJid: 'sid@dm', text: 'hello sid' },
       'brian',
       deps,
     );
@@ -112,5 +70,43 @@ describe('processMessageIpc cross-folder authorization', () => {
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'self message');
+  });
+});
+
+describe('processTaskIpc invoke_agent', () => {
+  it('dispatches to invokeAgent with folder and text', async () => {
+    const invokeAgent = vi.fn(async () => {});
+    const depsWithInvoke = { ...deps, invokeAgent };
+    await processTaskIpc(
+      { type: 'invoke_agent', agent: 'Sid', text: 'hello sid' },
+      'brian',
+      false,
+      depsWithInvoke,
+    );
+    expect(invokeAgent).toHaveBeenCalledWith('Sid', 'hello sid');
+  });
+
+  it('drops the request when agent is missing', async () => {
+    const invokeAgent = vi.fn(async () => {});
+    const depsWithInvoke = { ...deps, invokeAgent };
+    await processTaskIpc(
+      { type: 'invoke_agent', text: 'hello sid' },
+      'brian',
+      false,
+      depsWithInvoke,
+    );
+    expect(invokeAgent).not.toHaveBeenCalled();
+  });
+
+  it('drops the request when text is missing', async () => {
+    const invokeAgent = vi.fn(async () => {});
+    const depsWithInvoke = { ...deps, invokeAgent };
+    await processTaskIpc(
+      { type: 'invoke_agent', agent: 'Sid' },
+      'brian',
+      false,
+      depsWithInvoke,
+    );
+    expect(invokeAgent).not.toHaveBeenCalled();
   });
 });

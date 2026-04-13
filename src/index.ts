@@ -854,6 +854,18 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
+    invokeAgent: async (folder: string, prompt: string) => {
+      const folderLower = folder.toLowerCase();
+      const entry = Object.entries(registeredGroups).find(
+        ([, g]) => g.folder === folderLower,
+      );
+      if (!entry) {
+        logger.warn({ folder }, 'invokeAgent: no registered group for folder');
+        return;
+      }
+      const [chatJid, group] = entry;
+      await runAgentForChat(group, chatJid, prompt);
+    },
     onTasksChanged: () => {
       const tasks = getAllTasks();
       const taskRows = tasks.map((t) => ({
