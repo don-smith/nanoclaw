@@ -471,7 +471,6 @@ export async function processTaskIpc(
 export interface IpcMessageData {
   type: string;
   chatJid?: string;
-  agent?: string;
   text?: string;
 }
 
@@ -480,37 +479,9 @@ export async function processMessageIpc(
   sourceGroup: string,
   deps: IpcDeps,
 ): Promise<void> {
-  if (data.type !== 'message' || !data.text) {
+  if (data.type !== 'message' || !data.text || !data.chatJid) {
     return;
   }
-  const registeredGroups = deps.registeredGroups();
-
-  let chatJid = data.chatJid;
-  if (!chatJid && typeof data.agent === 'string') {
-    const folder = data.agent.toLowerCase();
-    const matchEntries = Object.entries(registeredGroups).filter(
-      ([, g]) => g.folder === folder,
-    );
-    if (matchEntries.length === 0) {
-      logger.warn(
-        { agent: data.agent, sourceGroup },
-        'IPC handoff: no registered group for agent',
-      );
-    } else {
-      if (matchEntries.length > 1) {
-        logger.warn(
-          { folder, count: matchEntries.length },
-          'Multiple JIDs map to folder; using first',
-        );
-      }
-      chatJid = matchEntries[0][0];
-    }
-  }
-
-  if (!chatJid) {
-    return;
-  }
-
-  await deps.sendMessage(chatJid, data.text);
-  logger.info({ chatJid, sourceGroup }, 'IPC message sent');
+  await deps.sendMessage(data.chatJid, data.text);
+  logger.info({ chatJid: data.chatJid, sourceGroup }, 'IPC message sent');
 }
