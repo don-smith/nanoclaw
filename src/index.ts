@@ -213,9 +213,9 @@ export async function runAgentForChat(
 ): Promise<'success' | 'error'> {
   const channel = findChannel(channels, chatJid);
   if (!channel) {
-    logger.warn(
+    logger.error(
       { chatJid, group: group.name },
-      'No channel owns JID, cannot invoke agent',
+      'No channel owns JID, cannot invoke agent (misconfiguration)',
     );
     return 'error';
   }
