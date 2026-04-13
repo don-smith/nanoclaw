@@ -10,7 +10,7 @@ const VOICE_MAP: Record<string, string> = {
   sid: 'bm_fable', // British male, grade C
   corsa: 'bf_emma', // British female, grade B-
   paula: 'af_sky', // American female, grade B
-  brian: 'am_michael', // American male, grade C+
+  brian: 'am_puck', // American male, grade C+
 };
 
 /**
