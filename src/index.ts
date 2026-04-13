@@ -223,6 +223,20 @@ export async function runAgentForChat(
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
 
+  // invoke_agent handoffs are single-turn — close stdin shortly after the
+  // agent produces a result so the container exits promptly instead of
+  // waiting out the 30-minute IDLE_TIMEOUT, which would block the IPC watcher
+  // behind this one invocation.
+  const CLOSE_DELAY_MS = 10000;
+  let closeTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleClose = () => {
+    if (closeTimer) return;
+    closeTimer = setTimeout(() => {
+      logger.debug({ group: group.name }, 'Closing container after agent result');
+      queue.closeStdin(chatJid);
+    }, CLOSE_DELAY_MS);
+  };
+
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     if (result.result) {
       const raw =
@@ -259,12 +273,14 @@ export async function runAgentForChat(
             });
         }
       }
+      scheduleClose();
     }
     if (result.status === 'error') {
       hadError = true;
     }
   });
 
+  if (closeTimer) clearTimeout(closeTimer);
   await channel.setTyping?.(chatJid, false);
 
   return output === 'error' || hadError ? 'error' : 'success';
