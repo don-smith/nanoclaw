@@ -200,6 +200,77 @@ export function _setRegisteredGroups(
 }
 
 /**
+ * Invoke an agent for a specific chat with a given prompt and stream output
+ * back through that chat (sendMessage + TTS). Returns once the agent finishes.
+ *
+ * Used by the normal message-processing path and by the invoke_agent IPC
+ * handler (cross-agent handoffs).
+ */
+export async function runAgentForChat(
+  group: RegisteredGroup,
+  chatJid: string,
+  prompt: string,
+): Promise<'success' | 'error'> {
+  const channel = findChannel(channels, chatJid);
+  if (!channel) {
+    logger.warn(
+      { chatJid, group: group.name },
+      'No channel owns JID, cannot invoke agent',
+    );
+    return 'error';
+  }
+
+  await channel.setTyping?.(chatJid, true);
+  let hadError = false;
+
+  const output = await runAgent(group, prompt, chatJid, async (result) => {
+    if (result.result) {
+      const raw =
+        typeof result.result === 'string'
+          ? result.result
+          : JSON.stringify(result.result);
+      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+      if (text) {
+        await channel.sendMessage(chatJid, text);
+        if (channel.sendVoice && text.length >= TTS_MIN_CHARS) {
+          const voice = getVoiceForGroup(group.folder);
+          ensureSidecarRunning()
+            .then(async (ready) => {
+              if (!ready) {
+                logger.warn(
+                  { group: group.name },
+                  'TTS sidecar unavailable, skipping voice message',
+                );
+                return;
+              }
+              const audio = await synthesizeSpeech(text, voice);
+              if (audio) {
+                await channel.sendVoice!(chatJid, audio);
+              } else {
+                logger.warn(
+                  { group: group.name },
+                  'TTS synthesis failed, skipping voice message',
+                );
+              }
+            })
+            .catch((err) => {
+              logger.error({ err, group: group.name }, 'TTS voice send failed');
+            });
+        }
+      }
+    }
+    if (result.status === 'error') {
+      hadError = true;
+    }
+  });
+
+  await channel.setTyping?.(chatJid, false);
+
+  return output === 'error' || hadError ? 'error' : 'success';
+}
+
+/**
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
