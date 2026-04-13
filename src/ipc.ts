@@ -493,14 +493,6 @@ export async function processMessageIpc(
     return;
   }
 
-  const targetGroup = registeredGroups[chatJid];
-  if (isMain || (targetGroup && targetGroup.folder === sourceGroup)) {
-    await deps.sendMessage(chatJid, data.text);
-    logger.info({ chatJid, sourceGroup }, 'IPC message sent');
-  } else {
-    logger.warn(
-      { chatJid, sourceGroup },
-      'Unauthorized IPC message attempt blocked',
-    );
-  }
+  await deps.sendMessage(chatJid, data.text);
+  logger.info({ chatJid, sourceGroup }, 'IPC message sent');
 }

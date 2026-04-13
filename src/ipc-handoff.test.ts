@@ -19,7 +19,7 @@ const SID: RegisteredGroup = {
 };
 
 let groups: Record<string, RegisteredGroup>;
-let sendMessage: ReturnType<typeof vi.fn>;
+let sendMessage: ReturnType<typeof vi.fn> & IpcDeps['sendMessage'];
 let deps: IpcDeps;
 
 beforeEach(() => {
@@ -31,7 +31,7 @@ beforeEach(() => {
   setRegisteredGroup('brian@dm', BRIAN);
   setRegisteredGroup('sid@dm', SID);
 
-  sendMessage = vi.fn(async () => {});
+  sendMessage = vi.fn(async () => {}) as typeof sendMessage;
   deps = {
     sendMessage,
     registeredGroups: () => groups,
@@ -87,5 +87,37 @@ describe('processMessageIpc agent resolution', () => {
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'hello');
+  });
+});
+
+describe('processMessageIpc cross-folder authorization', () => {
+  it('allows non-main source to send to a different folder', async () => {
+    await processMessageIpc(
+      { type: 'message', agent: 'sid', text: 'hello sid' },
+      'brian',
+      false,
+      deps,
+    );
+    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello sid');
+  });
+
+  it('still allows main source to send anywhere (regression)', async () => {
+    await processMessageIpc(
+      { type: 'message', chatJid: 'sid@dm', text: 'from main' },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'from main');
+  });
+
+  it('still allows same-folder send (regression)', async () => {
+    await processMessageIpc(
+      { type: 'message', chatJid: 'brian@dm', text: 'self message' },
+      'brian',
+      false,
+      deps,
+    );
+    expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'self message');
   });
 });
