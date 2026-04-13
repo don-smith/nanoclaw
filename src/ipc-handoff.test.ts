@@ -48,7 +48,6 @@ describe('processMessageIpc agent resolution', () => {
     await processMessageIpc(
       { type: 'message', agent: 'sid', text: 'hello' },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello');
@@ -58,7 +57,6 @@ describe('processMessageIpc agent resolution', () => {
     await processMessageIpc(
       { type: 'message', agent: 'SID', text: 'hello' },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello');
@@ -68,7 +66,6 @@ describe('processMessageIpc agent resolution', () => {
     await processMessageIpc(
       { type: 'message', agent: 'mavis', text: 'hello' },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).not.toHaveBeenCalled();
@@ -83,7 +80,6 @@ describe('processMessageIpc agent resolution', () => {
         text: 'hello',
       },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'hello');
@@ -95,27 +91,24 @@ describe('processMessageIpc cross-folder authorization', () => {
     await processMessageIpc(
       { type: 'message', agent: 'sid', text: 'hello sid' },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'hello sid');
   });
 
-  it('still allows main source to send anywhere (regression)', async () => {
+  it('sends to any registered chatJid regardless of source folder', async () => {
     await processMessageIpc(
-      { type: 'message', chatJid: 'sid@dm', text: 'from main' },
+      { type: 'message', chatJid: 'sid@dm', text: 'from elsewhere' },
       'whatsapp_main',
-      true,
       deps,
     );
-    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'from main');
+    expect(sendMessage).toHaveBeenCalledWith('sid@dm', 'from elsewhere');
   });
 
-  it('still allows same-folder send (regression)', async () => {
+  it('allows same-folder send (regression)', async () => {
     await processMessageIpc(
       { type: 'message', chatJid: 'brian@dm', text: 'self message' },
       'brian',
-      false,
       deps,
     );
     expect(sendMessage).toHaveBeenCalledWith('brian@dm', 'self message');

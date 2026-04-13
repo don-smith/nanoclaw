@@ -74,7 +74,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
             const filePath = path.join(messagesDir, file);
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-              await processMessageIpc(data, sourceGroup, isMain, deps);
+              await processMessageIpc(data, sourceGroup, deps);
               fs.unlinkSync(filePath);
             } catch (err) {
               logger.error(
@@ -459,7 +459,6 @@ export interface IpcMessageData {
 export async function processMessageIpc(
   data: IpcMessageData,
   sourceGroup: string,
-  isMain: boolean,
   deps: IpcDeps,
 ): Promise<void> {
   if (data.type !== 'message' || !data.text) {
