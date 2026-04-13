@@ -74,25 +74,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
             const filePath = path.join(messagesDir, file);
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-              if (data.type === 'message' && data.chatJid && data.text) {
-                // Authorization: verify this group can send to this chatJid
-                const targetGroup = registeredGroups[data.chatJid];
-                if (
-                  isMain ||
-                  (targetGroup && targetGroup.folder === sourceGroup)
-                ) {
-                  await deps.sendMessage(data.chatJid, data.text);
-                  logger.info(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'IPC message sent',
-                  );
-                } else {
-                  logger.warn(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'Unauthorized IPC message attempt blocked',
-                  );
-                }
-              }
+              await processMessageIpc(data, sourceGroup, isMain, deps);
               fs.unlinkSync(filePath);
             } catch (err) {
               logger.error(
@@ -464,5 +446,34 @@ export async function processTaskIpc(
 
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
+  }
+}
+
+export interface IpcMessageData {
+  type: string;
+  chatJid?: string;
+  agent?: string;
+  text?: string;
+}
+
+export async function processMessageIpc(
+  data: IpcMessageData,
+  sourceGroup: string,
+  isMain: boolean,
+  deps: IpcDeps,
+): Promise<void> {
+  if (data.type !== 'message' || !data.text || !data.chatJid) {
+    return;
+  }
+  const registeredGroups = deps.registeredGroups();
+  const targetGroup = registeredGroups[data.chatJid];
+  if (isMain || (targetGroup && targetGroup.folder === sourceGroup)) {
+    await deps.sendMessage(data.chatJid, data.text);
+    logger.info({ chatJid: data.chatJid, sourceGroup }, 'IPC message sent');
+  } else {
+    logger.warn(
+      { chatJid: data.chatJid, sourceGroup },
+      'Unauthorized IPC message attempt blocked',
+    );
   }
 }
