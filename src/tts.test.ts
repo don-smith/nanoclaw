@@ -23,8 +23,8 @@ describe('getVoiceForGroup', () => {
     expect(getVoiceForGroup('paula')).toBe('af_sky');
   });
 
-  it('returns am_michael for brian', () => {
-    expect(getVoiceForGroup('brian')).toBe('am_michael');
+  it('returns am_puck for brian', () => {
+    expect(getVoiceForGroup('brian')).toBe('am_puck');
   });
 
   it('returns default voice af_heart for unknown groups', () => {
