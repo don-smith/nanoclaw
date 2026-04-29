@@ -43,7 +43,7 @@ describe('task scheduler', () => {
       getSessions: () => ({}),
       queue: { enqueueTask } as any,
       onProcess: () => {},
-      sendMessage: async () => {},
+      sendReply: async () => {},
     });
 
     await vi.advanceTimersByTimeAsync(10);

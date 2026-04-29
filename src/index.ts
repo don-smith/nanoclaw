@@ -12,16 +12,9 @@ import {
   MESSAGE_SETTLE_MS,
   POLL_INTERVAL,
   TIMEZONE,
-  TTS_MIN_CHARS,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
-import {
-  getVoiceForGroup,
-  synthesizeSpeech,
-  ensureSidecarRunning,
-  startSidecar,
-  stopSidecar,
-} from './tts.js';
+import { startSidecar, stopSidecar } from './tts.js';
 import './channels/index.js';
 import {
   getChannelFactory,
@@ -58,7 +51,12 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
-import { findChannel, formatMessages, formatOutbound } from './router.js';
+import {
+  findChannel,
+  formatMessages,
+  formatOutbound,
+  sendReplyWithVoice,
+} from './router.js';
 import {
   restoreRemoteControl,
   startRemoteControl,
@@ -232,7 +230,10 @@ export async function runAgentForChat(
   const scheduleClose = () => {
     if (closeTimer) return;
     closeTimer = setTimeout(() => {
-      logger.debug({ group: group.name }, 'Closing container after agent result');
+      logger.debug(
+        { group: group.name },
+        'Closing container after agent result',
+      );
       queue.closeStdin(chatJid);
     }, CLOSE_DELAY_MS);
   };
@@ -246,32 +247,7 @@ export async function runAgentForChat(
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
-        if (channel.sendVoice && text.length >= TTS_MIN_CHARS) {
-          const voice = getVoiceForGroup(group.folder);
-          ensureSidecarRunning()
-            .then(async (ready) => {
-              if (!ready) {
-                logger.warn(
-                  { group: group.name },
-                  'TTS sidecar unavailable, skipping voice message',
-                );
-                return;
-              }
-              const audio = await synthesizeSpeech(text, voice);
-              if (audio) {
-                await channel.sendVoice!(chatJid, audio);
-              } else {
-                logger.warn(
-                  { group: group.name },
-                  'TTS synthesis failed, skipping voice message',
-                );
-              }
-            })
-            .catch((err) => {
-              logger.error({ err, group: group.name }, 'TTS voice send failed');
-            });
-        }
+        await sendReplyWithVoice(channel, group, chatJid, text);
       }
       scheduleClose();
     }
@@ -372,38 +348,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
+        await sendReplyWithVoice(channel, group, chatJid, text);
         outputSentToUser = true;
-
-        // Send a voice version if the channel supports it and the text
-        // is long enough to be worth listening to (short messages are
-        // faster to read). Failures are logged silently since the text
-        // response is already delivered.
-        if (channel.sendVoice && text.length >= TTS_MIN_CHARS) {
-          const voice = getVoiceForGroup(group.folder);
-          ensureSidecarRunning()
-            .then(async (ready) => {
-              if (!ready) {
-                logger.warn(
-                  { group: group.name },
-                  'TTS sidecar unavailable, skipping voice message',
-                );
-                return;
-              }
-              const audio = await synthesizeSpeech(text, voice);
-              if (audio) {
-                await channel.sendVoice!(chatJid, audio);
-              } else {
-                logger.warn(
-                  { group: group.name },
-                  'TTS synthesis failed, skipping voice message',
-                );
-              }
-            })
-            .catch((err) => {
-              logger.error({ err, group: group.name }, 'TTS voice send failed');
-            });
-        }
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -842,14 +788,22 @@ async function main(): Promise<void> {
     queue,
     onProcess: (groupJid, proc, containerName, groupFolder) =>
       queue.registerProcess(groupJid, proc, containerName, groupFolder),
-    sendMessage: async (jid, rawText) => {
+    sendReply: async (jid, rawText) => {
       const channel = findChannel(channels, jid);
       if (!channel) {
-        logger.warn({ jid }, 'No channel owns JID, cannot send message');
+        logger.warn({ jid }, 'No channel owns JID, cannot send reply');
+        return;
+      }
+      const group = registeredGroups[jid];
+      if (!group) {
+        logger.warn(
+          { jid },
+          'No registered group for JID, cannot send reply with voice',
+        );
         return;
       }
       const text = formatOutbound(rawText);
-      if (text) await channel.sendMessage(jid, text);
+      if (text) await sendReplyWithVoice(channel, group, jid, text);
     },
   });
   startIpcWatcher({
