@@ -476,9 +476,15 @@ export class TelegramChannel implements Channel {
     const startPromises: Promise<void>[] = [];
 
     for (const [botName, token] of this.botTokens) {
+      // Force IPv4 — broken IPv6 routing (e.g. WireGuard/Tailscale split tunnels)
+      // causes Node.js Happy Eyeballs to hang on the IPv6 attempt before failing
+      // over. An explicit family:4 agent bypasses this.
       const bot = new Bot(token, {
         client: {
-          baseFetchConfig: { agent: https.globalAgent, compress: true },
+          baseFetchConfig: {
+            agent: new https.Agent({ family: 4, keepAlive: true }),
+            compress: true,
+          },
         },
       });
 
@@ -487,18 +493,24 @@ export class TelegramChannel implements Channel {
 
       this.setupBotHandlers(instance);
 
-      // Start polling — collect promises so we await all
-      const startPromise = new Promise<void>((resolve) => {
-        bot.start({
-          onStart: (botInfo) => {
-            logger.info(
-              { username: botInfo.username, id: botInfo.id, bot: botName },
-              'Telegram bot connected',
-            );
-            console.log(`  Telegram bot [${botName}]: @${botInfo.username}`);
-            resolve();
-          },
-        });
+      // Start polling — collect promises so we await all.
+      // bot.start() only resolves when the bot stops, so we use onStart to
+      // detect a successful connection. We must also catch bot.start() errors
+      // (e.g. HttpError during Grammy's withRetries startup) and surface them
+      // so Promise.all fails fast rather than hanging forever.
+      const startPromise = new Promise<void>((resolve, reject) => {
+        bot
+          .start({
+            onStart: (botInfo) => {
+              logger.info(
+                { username: botInfo.username, id: botInfo.id, bot: botName },
+                'Telegram bot connected',
+              );
+              console.log(`  Telegram bot [${botName}]: @${botInfo.username}`);
+              resolve();
+            },
+          })
+          .catch(reject);
       });
 
       startPromises.push(startPromise);
