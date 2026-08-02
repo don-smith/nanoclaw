@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.17.16",
-    "better-sqlite3": "11.10.0",
+    "better-sqlite3": "^12.10.0",
     "cron-parser": "5.5.0",
     "grammy": "^1.39.3",
     "https-proxy-agent": "^7.0.6",
