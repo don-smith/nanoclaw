@@ -4,7 +4,7 @@ import path from 'path';
 /**
  * Tests for service configuration generation.
  *
- * These tests verify the generated content of plist/systemd/nohup configs
+ * These tests verify the generated content of plist/systemd configs
  * without actually loading services.
  */
 
@@ -163,25 +163,5 @@ describe('systemd unit generation', () => {
     expect(unit).toContain(
       'ExecStart=/usr/bin/node /srv/nanoclaw/dist/index.js',
     );
-  });
-});
-
-describe('WSL nohup fallback', () => {
-  it('generates a valid wrapper script', () => {
-    const projectRoot = '/home/user/nanoclaw';
-    const nodePath = '/usr/bin/node';
-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
-
-    // Simulate what service.ts generates
-    const wrapper = `#!/bin/bash
-set -euo pipefail
-cd ${JSON.stringify(projectRoot)}
-nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot)}/dist/index.js >> ${JSON.stringify(projectRoot)}/logs/nanoclaw.log 2>> ${JSON.stringify(projectRoot)}/logs/nanoclaw.error.log &
-echo $! > ${JSON.stringify(pidFile)}`;
-
-    expect(wrapper).toContain('#!/bin/bash');
-    expect(wrapper).toContain('nohup');
-    expect(wrapper).toContain(nodePath);
-    expect(wrapper).toContain('nanoclaw.pid');
   });
 });

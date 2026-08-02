@@ -31,7 +31,7 @@ curl -fsSL https://nanoclaw.dev/install-docker-sandboxes-windows.sh | bash
 
 > 現在、macOS（Apple Silicon）とWindows（x86）に対応しています。Linux対応は近日公開予定。
 
-<p align="center"><a href="https://nanoclaw.dev/blog/nanoclaw-docker-sandboxes">発表記事を読む →</a>&nbsp; · &nbsp;<a href="docs/docker-sandboxes.md">手動セットアップガイド →</a></p>
+<p align="center"><a href="https://nanoclaw.dev/blog/nanoclaw-docker-sandboxes">発表記事を読む →</a></p>
 
 ---
 

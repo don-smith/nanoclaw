@@ -2,7 +2,7 @@
  * Step: service — Generate and load service manager config.
  * Replaces 08-setup-service.sh
  *
- * Fixes: Root→system systemd, WSL nohup fallback, no `|| true` swallowing errors.
+ * Fixes: Root→system systemd, systemd user-session detection, no `|| true` swallowing errors.
  */
 import { execSync } from 'child_process';
 import fs from 'fs';
@@ -154,8 +154,8 @@ function setupLinux(
   if (serviceManager === 'systemd') {
     setupSystemd(projectRoot, nodePath, homeDir);
   } else {
-    // WSL without systemd or other Linux without systemd
-    setupNohupFallback(projectRoot, nodePath, homeDir);
+    // WSL without systemd or other Linux without systemd: no service manager
+    reportNoServiceManager(projectRoot, nodePath, 'no_supported_service_manager');
   }
 }
 
@@ -181,7 +181,8 @@ function killOrphanedProcesses(projectRoot: string): void {
  * daemon (user@UID.service) keeps the old group list from login time.
  * Docker works in the terminal but not in the service context.
  *
- * Only relevant on Linux with user-level systemd (not root, not macOS, not WSL nohup).
+ * Only relevant on Linux with user-level systemd (not root, not macOS, and only when a
+ * systemd user session is available).
  */
 function checkDockerGroupStale(): boolean {
   try {
@@ -222,9 +223,9 @@ function setupSystemd(
       execSync('systemctl --user daemon-reload', { stdio: 'pipe' });
     } catch {
       logger.warn(
-        'systemd user session not available — falling back to nohup wrapper',
+        'systemd user session not available — no service manager configured',
       );
-      setupNohupFallback(projectRoot, nodePath, homeDir);
+      reportNoServiceManager(projectRoot, nodePath, 'systemd_user_session_unavailable');
       return;
     }
     const unitDir = path.join(homeDir, '.config', 'systemd', 'user');
@@ -321,56 +322,27 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   });
 }
 
-function setupNohupFallback(
+/**
+ * Report when no supported service manager (launchd/systemd) is available.
+ *
+ * We intentionally do NOT generate a start-nanoclaw.sh wrapper — NanoClaw is
+ * meant to run under a service manager (launchd on macOS, systemd on Linux).
+ * On platforms without one, the user must run it themselves.
+ */
+function reportNoServiceManager(
   projectRoot: string,
   nodePath: string,
-  homeDir: string,
+  reason: string,
 ): void {
-  logger.warn('No systemd detected — generating nohup wrapper script');
-
-  const wrapperPath = path.join(projectRoot, 'start-nanoclaw.sh');
-  const pidFile = path.join(projectRoot, 'nanoclaw.pid');
-
-  const lines = [
-    '#!/bin/bash',
-    '# start-nanoclaw.sh — Start NanoClaw without systemd',
-    `# To stop: kill \\$(cat ${pidFile})`,
-    '',
-    'set -euo pipefail',
-    '',
-    `cd ${JSON.stringify(projectRoot)}`,
-    '',
-    '# Stop existing instance if running',
-    `if [ -f ${JSON.stringify(pidFile)} ]; then`,
-    `  OLD_PID=$(cat ${JSON.stringify(pidFile)} 2>/dev/null || echo "")`,
-    '  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then',
-    '    echo "Stopping existing NanoClaw (PID $OLD_PID)..."',
-    '    kill "$OLD_PID" 2>/dev/null || true',
-    '    sleep 2',
-    '  fi',
-    'fi',
-    '',
-    'echo "Starting NanoClaw..."',
-    `nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot + '/dist/index.js')} \\`,
-    `  >> ${JSON.stringify(projectRoot + '/logs/nanoclaw.log')} \\`,
-    `  2>> ${JSON.stringify(projectRoot + '/logs/nanoclaw.error.log')} &`,
-    '',
-    `echo $! > ${JSON.stringify(pidFile)}`,
-    'echo "NanoClaw started (PID $!)"',
-    `echo "Logs: tail -f ${projectRoot}/logs/nanoclaw.log"`,
-  ];
-  const wrapper = lines.join('\n') + '\n';
-
-  fs.writeFileSync(wrapperPath, wrapper, { mode: 0o755 });
-  logger.info({ wrapperPath }, 'Wrote nohup wrapper script');
-
+  logger.warn(
+    'No supported service manager available (launchd/systemd) — NanoClaw service not installed. Run it manually or install a service manager.',
+  );
   emitStatus('SETUP_SERVICE', {
-    SERVICE_TYPE: 'nohup',
+    SERVICE_TYPE: 'none',
     NODE_PATH: nodePath,
     PROJECT_PATH: projectRoot,
-    WRAPPER_PATH: wrapperPath,
+    REASON: reason,
     SERVICE_LOADED: false,
-    FALLBACK: 'wsl_no_systemd',
     STATUS: 'success',
     LOG: 'logs/setup.log',
   });
