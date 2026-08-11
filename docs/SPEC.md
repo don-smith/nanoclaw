@@ -693,17 +693,20 @@ When NanoClaw starts, it:
 ### Managing the Service
 
 ```bash
-# Install service
-cp launchd/com.nanoclaw.plist ~/Library/LaunchAgents/
+# Install and start service (generates the plist and registers it with launchd)
+npx tsx setup/index.ts --step service
 
-# Start service
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+# Start an existing installed service
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nanoclaw.plist
 
-# Stop service
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+# Stop and unload service
+launchctl bootout gui/$(id -u)/com.nanoclaw
+
+# Restart service
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 
 # Check status
-launchctl list | grep nanoclaw
+launchctl print gui/$(id -u)/com.nanoclaw
 
 # View logs
 tail -f logs/nanoclaw.log
@@ -762,7 +765,7 @@ chmod 700 groups/
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| No response to messages | Service not running | Check `launchctl list | grep nanoclaw` |
+| No response to messages | Service not running | Check `launchctl print gui/$(id -u)/com.nanoclaw` |
 | "Claude Code process exited with code 1" | Container runtime failed to start | Check logs; NanoClaw auto-starts container runtime but may fail |
 | "Claude Code process exited with code 1" | Session mount path wrong | Ensure mount is to `/home/node/.claude/` not `/root/.claude/` |
 | Session not continuing | Session ID not saved | Check SQLite: `sqlite3 store/messages.db "SELECT * FROM sessions"` |

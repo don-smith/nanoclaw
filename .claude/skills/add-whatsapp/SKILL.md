@@ -272,8 +272,6 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 # Linux (systemd)
 systemctl --user restart nanoclaw
 
-# Linux (nohup fallback)
-bash start-nanoclaw.sh
 ```
 
 ### Test the connection

@@ -115,22 +115,64 @@ function setupLaunchd(
   fs.writeFileSync(plistPath, plist);
   logger.info({ plistPath }, 'Wrote launchd plist');
 
+  const launchdDomain = `gui/${process.getuid?.() ?? 0}`;
+
+  // Replace any existing registration. `load`/`unload` are legacy commands and
+  // can leave the job absent after setup reports success. `bootstrap` registers
+  // the LaunchAgent in the user's GUI domain, where it will be reloaded at login.
   try {
-    execSync(`launchctl load ${JSON.stringify(plistPath)}`, {
+    execSync(`launchctl bootout ${launchdDomain}/com.nanoclaw`, {
       stdio: 'ignore',
     });
-    logger.info('launchctl load succeeded');
   } catch {
-    logger.warn('launchctl load failed (may already be loaded)');
+    // The job was not loaded; that is the normal first-install case.
   }
 
-  // Verify
+  let bootstrapError: unknown;
+  let bootstrapped = false;
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      execSync(
+        `launchctl bootstrap ${launchdDomain} ${JSON.stringify(plistPath)}`,
+        { stdio: 'ignore' },
+      );
+      bootstrapped = true;
+      logger.info({ launchdDomain, attempt }, 'launchctl bootstrap succeeded');
+      break;
+    } catch (err) {
+      bootstrapError = err;
+      if (attempt < 10) {
+        logger.warn(
+          { launchdDomain, attempt },
+          'launchctl bootstrap is still settling; retrying',
+        );
+        execSync('sleep 1');
+      }
+    }
+  }
+  if (!bootstrapped) {
+    logger.error(
+      { err: bootstrapError, launchdDomain, plistPath },
+      'launchctl bootstrap failed',
+    );
+    throw new Error('Failed to register NanoClaw with launchd', {
+      cause: bootstrapError,
+    });
+  }
+
+  // Verify the exact per-user service, rather than grepping every launchd domain.
   let serviceLoaded = false;
   try {
-    const output = execSync('launchctl list', { encoding: 'utf-8' });
-    serviceLoaded = output.includes('com.nanoclaw');
+    execSync(`launchctl print ${launchdDomain}/com.nanoclaw`, {
+      stdio: 'ignore',
+    });
+    serviceLoaded = true;
   } catch {
-    // launchctl list failed
+    // Registration failed.
+  }
+
+  if (!serviceLoaded) {
+    throw new Error('NanoClaw was not found after launchd bootstrap');
   }
 
   emitStatus('SETUP_SERVICE', {

@@ -61,9 +61,10 @@ npm run build        # Compile TypeScript
 Service management:
 ```bash
 # macOS (launchd)
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # restart
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nanoclaw.plist  # install/start
+launchctl bootout gui/$(id -u)/com.nanoclaw                                # stop/unload
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw                            # restart
+launchctl print gui/$(id -u)/com.nanoclaw                                   # status
 
 # Linux (systemd)
 systemctl --user start nanoclaw

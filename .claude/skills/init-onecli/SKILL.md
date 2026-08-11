@@ -239,7 +239,7 @@ If build fails, diagnose and fix. Common issue: `@onecli-sh/sdk` not installed â
 Restart the service:
 - macOS (launchd): `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
 - Linux (systemd): `systemctl --user restart nanoclaw`
-- WSL/manual: stop and re-run `bash start-nanoclaw.sh`
+- Manual/no-service-manager environments: stop and re-run `npm start` from the project directory
 
 ## Phase 5: Verify
 

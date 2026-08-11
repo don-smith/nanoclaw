@@ -42,9 +42,9 @@ If you need Kubernetes enabled, set `CONTAINER_IMAGE` to an image stored in a re
 ## Quick Status Check
 
 ```bash
-# 1. Is the service running?
-launchctl list | grep nanoclaw
-# Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
+# 1. Is the service registered and running?
+launchctl print gui/$(id -u)/com.nanoclaw 2>&1 | grep -E 'state =|pid =|last exit code'
+# Expected: state = running and a pid = <number>
 
 # 2. Any running containers?
 docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw

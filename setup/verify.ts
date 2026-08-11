@@ -34,18 +34,17 @@ export async function run(_args: string[]): Promise<void> {
   const mgr = getServiceManager();
 
   if (mgr === 'launchd') {
+    const launchdDomain = `gui/${process.getuid?.() ?? 0}`;
     try {
-      const output = execSync('launchctl list', { encoding: 'utf-8' });
-      if (output.includes('com.nanoclaw')) {
-        // Check if it has a PID (actually running)
-        const line = output.split('\n').find((l) => l.includes('com.nanoclaw'));
-        if (line) {
-          const pidField = line.trim().split(/\s+/)[0];
-          service = pidField !== '-' && pidField ? 'running' : 'stopped';
-        }
-      }
+      const output = execSync(
+        `launchctl print ${launchdDomain}/com.nanoclaw`,
+        { encoding: 'utf-8' },
+      );
+      service = /state = running/.test(output) && /pid = \d+/.test(output)
+        ? 'running'
+        : 'stopped';
     } catch {
-      // launchctl not available
+      // The per-user LaunchAgent is not registered.
     }
   } else if (mgr === 'systemd') {
     const prefix = isRoot() ? 'systemctl' : 'systemctl --user';
@@ -62,21 +61,6 @@ export async function run(_args: string[]): Promise<void> {
         }
       } catch {
         // systemctl not available
-      }
-    }
-  } else {
-    // Check for nohup PID file
-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
-    if (fs.existsSync(pidFile)) {
-      try {
-        const raw = fs.readFileSync(pidFile, 'utf-8').trim();
-        const pid = Number(raw);
-        if (raw && Number.isInteger(pid) && pid > 0) {
-          process.kill(pid, 0);
-          service = 'running';
-        }
-      } catch {
-        service = 'stopped';
       }
     }
   }
